@@ -77,12 +77,56 @@ sys_sleep(void)
 
 
 #ifdef LAB_PGTBL
-int
+// BASE is the starting virtual address of the first
+// user page to check, LEN is the number of pages to
+// check, MASK is a user address to a buffer storing
+// the result
+uint64
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+  uint64 base;
+  int len;
+  uint64 mask;
+
+  unsigned int result = 0;
+  pte_t *pte;
+  struct proc *p = myproc();
+
+  if (argaddr(0, &base) < 0)
+    return -1;
+  if (argint(1, &len) < 0)
+    return -1;
+  if (argaddr(2, &mask) < 0)
+    return -1;
+
+  if (len > 32)
+    return -1;
+
+  for (int i = 0; i < len; i += 1) {
+    if ((pte = walk(p->pagetable, base + i * PGSIZE, 0)) == 0)
+      return -1;
+    if((*pte & PTE_V) && (*pte & (PTE_R|PTE_W|PTE_X))
+       && (*pte & PTE_A)){
+      result += (1 << i);
+      // printf("%d: %d\n", i, result);
+      *pte = (*pte)&(~PTE_A);
+    }
+  }
+
+  if (copyout(p->pagetable, mask, (char*)&result, sizeof(result)) < 0)
+    return -1;
   return 0;
 }
+
+uint64
+sys_printpgtbl(void)
+{
+  struct proc *p = myproc();
+  vmprint(p->pagetable);
+  return 0;
+}
+
 #endif
 
 uint64

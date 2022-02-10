@@ -109,6 +109,7 @@ extern uint64 sys_connect(void);
 #endif
 #ifdef LAB_PGTBL
 extern uint64 sys_pgaccess(void);
+extern uint64 sys_printpgtbl(void);
 #endif
 
 static uint64 (*syscalls[])(void) = {
@@ -138,6 +139,7 @@ static uint64 (*syscalls[])(void) = {
 #endif
 #ifdef LAB_PGTBL
 [SYS_pgaccess] sys_pgaccess,
+[SYS_printpgtbl] sys_printpgtbl,
 #endif
 };
 

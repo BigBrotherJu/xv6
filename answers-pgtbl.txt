@@ -4,3 +4,10 @@
 
 2. Explain the output of vmprint in terms of Fig 3-4 from the text. What does page 0 contain? What is in page 2? When running in user mode, could the process read/write the memory mapped by page 1? What does the third to last page contain?
 
+   Page 0 contains instructions and data of `init`.
+
+   Page 2 is the stack of this process.
+
+   When running in user mode, the process cannot read/write the memory mapped by page 1. Because page 1 is the guard page and the PTE of this guard page has its user bit cleared. However, the valid bit of the PTE is still set and there is still a physical page mapped to the PTE.
+
+   The third to last page is the heap of the process, plus a USYSCALL page, a TRAPFRAME page, and a TRAMPOLINE page.
