@@ -105,4 +105,16 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  int interval_ticks;
+  int passed_ticks;
+  uint64 handler;
+  // 0 when sigalarm hasn't been called, the process won't repsond to timer
+  // interrupt
+  // 1 when sigalarm has been called, the process will repsond to timer
+  // interrupt
+  // 2 when the timer interrupt is being handled, but the handler hasn't
+  // return yet
+  int alarm_status;
+  struct trapframe *alarm_reg;
 };
