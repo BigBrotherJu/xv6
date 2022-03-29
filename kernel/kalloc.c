@@ -23,10 +23,53 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct spinlock ref_cnt_lock;
+int ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
+
+void
+inc_ref_cnt(uint64 pa)
+{
+  acquire(&ref_cnt_lock);
+  ref_cnt[(pa - KERNBASE) / PGSIZE]++;
+  release(&ref_cnt_lock);
+}
+
+// if ref cnt for old_pa is less than or equal to 1,
+// no need to do allocation and copy, directly
+// return old_pa;
+// else, allocate a new physical page:
+//   if a new page can be allocated,
+//   copy content of old page to new page
+//   return new page address;
+//   if a new page cannot be allocated,
+//   return 0;
+uint64
+kcow_alloc_copy(uint64 old_pa)
+{
+  acquire(&ref_cnt_lock);
+
+  if (ref_cnt[(old_pa - KERNBASE) / PGSIZE] <= 1) {
+    release(&ref_cnt_lock);
+    return old_pa;
+  } else {
+    uint64 new_pa = (uint64)kalloc();
+
+    if (new_pa != 0) {
+      memmove((void*)new_pa, (void*)old_pa, PGSIZE);
+      ref_cnt[(old_pa - KERNBASE) / PGSIZE]--;
+    }
+
+    release(&ref_cnt_lock);
+    return new_pa;
+  }
+
+}
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&ref_cnt_lock, "ref_cnt");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -51,6 +94,11 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  // < 0 to account for kfree in freerange
+  acquire(&ref_cnt_lock);
+  ref_cnt[((uint64)pa - KERNBASE) / PGSIZE]--;
+  if (ref_cnt[((uint64)pa - KERNBASE) / PGSIZE] <= 0) {
+
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -60,6 +108,9 @@ kfree(void *pa)
   r->next = kmem.freelist;
   kmem.freelist = r;
   release(&kmem.lock);
+
+  }
+  release(&ref_cnt_lock);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -78,5 +129,7 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+  if(r)
+    ref_cnt[((uint64)r - KERNBASE) / PGSIZE] = 1;
   return (void*)r;
 }
