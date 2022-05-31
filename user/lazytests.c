@@ -8,7 +8,7 @@
 #include "kernel/memlayout.h"
 #include "kernel/riscv.h"
 
-#define REGION_SZ (1024 * 1024 * 1024)
+#define REGION_SZ (128 * 1024 * 1024)
 
 void
 sparse_memory(char *s)
@@ -132,7 +132,7 @@ main(int argc, char *argv[])
   } tests[] = {
     { sparse_memory, "lazy alloc"},
     { sparse_memory_unmap, "lazy unmap"},
-    { oom, "out of memory"},
+    // { oom, "out of memory"},
     { 0, 0},
   };
     
