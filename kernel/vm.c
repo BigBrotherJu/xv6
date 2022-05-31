@@ -206,9 +206,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      // panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      // panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -374,9 +376,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
 
     // clear PTE_W in parent PTEs
     *pte = *pte & ~PTE_W;
@@ -412,7 +416,11 @@ uvmcowcheck(pagetable_t pagetable, uint64 va, uint64 sz)
     return 0;
   } else {
     pte_t *pte = walk(pagetable, va, 0);
-    return (*pte & PTE_COW) && (*pte & PTE_V);
+    if (pte == 0) {
+      return 0;
+    } else {
+      return ((*pte & PTE_V) && (*pte & PTE_COW));
+    }
   }
 }
 
@@ -443,6 +451,46 @@ uvmcowalloc(pagetable_t pagetable, uint64 fault_va)
   return 0;
 }
 
+int
+uvmlazycheck(uint64 va)
+{
+  pte_t *pte;
+  struct proc *p = myproc();
+
+  if (va < p->sz) {
+    pte = walk(p->pagetable, va, 0);
+    if (pte == 0) {
+      return 1;
+    } else {
+      if ((*pte & PTE_V) == 0) {
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+  } else {
+    return 0;
+  }
+}
+void
+uvmlazyalloc(uint64 va)
+{
+  struct proc *p = myproc();
+  char *mem = kalloc();
+  if(mem == 0) {
+    // failed to allocate physical memory
+    printf("lazy alloc: out of memory\n");
+    p->killed = 1;
+  } else {
+    memset(mem, 0, PGSIZE);
+    if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      printf("lazy alloc: failed to map page\n");
+      kfree(mem);
+      p->killed = 1;
+    }
+  }
+}
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -467,9 +515,15 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   struct proc *p = myproc();
   if (uvmcowcheck(pagetable, dstva, p->sz)) {
     if (uvmcowalloc(pagetable, dstva) == -1) {
-      panic("copyout: no memory when allocating new page for COW page");
+      printf("copyout: no memory when allocating new page for COW page");
+      p->killed = 1;
       return -1;
     }
+    kvmcopymappings_single(p->pagetable, p->kernelpgtbl, dstva);
+  }
+
+  if (uvmlazycheck(dstva)) {
+    uvmlazyalloc(dstva);
     kvmcopymappings_single(p->pagetable, p->kernelpgtbl, dstva);
   }
 
@@ -596,9 +650,11 @@ kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz)
   // PGROUNDUP: prevent re-mapping already mapped pages (eg. when doing growproc)
   for(i = PGROUNDUP(start); i < start + sz; i += PGSIZE){
     if((pte = walk(src, i, 0)) == 0)
-      panic("kvmcopymappings: pte should exist");
+      // panic("kvmcopymappings: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("kvmcopymappings: page not present");
+      // panic("kvmcopymappings: page not present");
+      continue;
     pa = PTE2PA(*pte);
     // `& ~PTE_U` 表示将该页的权限设置为非用户页
     // 必须设置该权限，RISC-V 中内核是无法直接访问用户页的。
@@ -626,9 +682,11 @@ kvmcopymappings_single(pagetable_t src, pagetable_t dst, uint64 va)
   uint flags;
 
   if((pte = walk(src, va, 0)) == 0)
-    panic("kvmcopymappings: pte should exist");
+    // panic("kvmcopymappings: pte should exist");
+    return 0;
   if((*pte & PTE_V) == 0)
-    panic("kvmcopymappings: page not present");
+    // panic("kvmcopymappings: page not present");
+    return 0;
   pa = PTE2PA(*pte);
   // `& ~PTE_U` 表示将该页的权限设置为非用户页
   // 必须设置该权限，RISC-V 中内核是无法直接访问用户页的。
@@ -655,6 +713,35 @@ kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   }
 
   return newsz;
+}
+
+// kernel/vm.c
+int pgtblprint(pagetable_t pagetable, int depth) {
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V) { // 如果页表项有效
+      // 按格式打印页表项
+      printf("..");
+      for(int j=0;j<depth;j++) {
+        printf(" ..");
+      }
+      printf("%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+
+      // 如果该节点不是叶节点，递归打印其子节点。
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        // this PTE points to a lower-level page table.
+        uint64 child = PTE2PA(pte);
+        pgtblprint((pagetable_t)child,depth+1);
+      }
+    }
+  }
+  return 0;
+}
+
+int vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  return pgtblprint(pagetable, 0);
 }
 
 

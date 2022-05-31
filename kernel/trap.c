@@ -69,12 +69,19 @@ usertrap(void)
     // ok
   } else {
     // store page fault on COW page
+    // vmprint(p->pagetable);
     if (r_scause() == 15 && uvmcowcheck(p->pagetable, r_stval(), p->sz) != 0) {
+      // printf("%p %p\n", r_stval(), p->sz);
       if (uvmcowalloc(p->pagetable, r_stval()) == -1) {
         printf("no memory when allocating new page for store page"
                "fault on COW page\n");
         p->killed = 1;
       }
+      kvmcopymappings_single(p->pagetable, p->kernelpgtbl, r_stval());
+    } else if ((r_scause() == 13 || r_scause() == 15) &&
+                uvmlazycheck(r_stval())) {
+        // printf("%d \n", uvmlazycheck(r_stval()));
+      uvmlazyalloc(r_stval());
       kvmcopymappings_single(p->pagetable, p->kernelpgtbl, r_stval());
     } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -162,6 +169,10 @@ kerneltrap()
                "fault on COW page\n");
         p->killed = 1;
       }
+      kvmcopymappings_single(p->pagetable, p->kernelpgtbl, r_stval());
+    } else if ((r_scause() == 13 || r_scause() == 15) &&
+                uvmlazycheck(r_stval())) {
+      uvmlazyalloc(r_stval());
       kvmcopymappings_single(p->pagetable, p->kernelpgtbl, r_stval());
     } else {
 

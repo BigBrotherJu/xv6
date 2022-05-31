@@ -41,6 +41,7 @@
 #define PLIC_MCLAIM(hart) (PLIC + 0x200004 + (hart)*0x2000)
 #define PLIC_SCLAIM(hart) (PLIC + 0x201004 + (hart)*0x2000)
 
+#define BOTTOM_DEV_ADDR PLIC
 // the kernel expects there to be RAM
 // for use by the kernel and user pages
 // from physical address 0x80000000 to PHYSTOP.
