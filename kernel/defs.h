@@ -179,6 +179,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 pagetable_t     kvmmake_proc(void);
 void            free_kernelpgtbl(pagetable_t pagetable);
 int             kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz);
+int             kvmcopymappings_single(pagetable_t src, pagetable_t dst, uint64 va);
 uint64          kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz);
 
 int             vmprint(pagetable_t);
