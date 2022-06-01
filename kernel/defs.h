@@ -172,10 +172,13 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // pte_t*          walk(pagetable_t pagetable, uint64 va, int alloc);
-pagetable_t     kvmmake(void);
+pagetable_t     kvmmake_proc(void);
 void            free_kernelpgtbl(pagetable_t pagetable);
 int             kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz);
 uint64          kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz);
+
+int             vmprint(pagetable_t);
+pte_t*          walk_level(pagetable_t pagetable, uint64 va, int alloc, int level);
 
 // plic.c
 void            plicinit(void);
